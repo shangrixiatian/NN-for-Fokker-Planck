@@ -1,0 +1,176 @@
+# -*- coding: utf-8 -*-
+
+#import tensorflow as tf
+import tensorflow.compat.v1 as tf
+tf.disable_v2_behavior()
+import numpy as np
+import time, datetime
+import matplotlib.pyplot as plt
+
+tf.reset_default_graph()   
+start_time = time.time()
+
+name='two neural network'
+# setting of the problem
+dim = 2
+rf = 1
+
+
+n_maxstep = 600000 # max interation
+#batch_size = 1
+gamma = 0.01  # learning rate
+
+
+# neural net architectures
+n_neuronForF = [1, 20, 20, 20, rf]
+
+# 导入算子
+A = np.load('operator1.npy')
+A1=[]
+for i in range(len(A)):
+    A1.append(tf.convert_to_tensor(A[i]))
+#A1 = tf.convert_to_tensor(A1)
+A = np.load('operator2.npy')
+A2=[]
+for i in range(len(A)):
+    A2.append(tf.convert_to_tensor(A[i]))
+#A2 = tf.convert_to_tensor(A2)
+Ra = 9 # 算子长度
+Rb = 2 # 边界算子
+B = np.load('B_operator1.npy')
+B1=[]
+for i in range(len(B)):
+    B1.append(tf.convert_to_tensor(B[i]))
+#B1 = tf.convert_to_tensor(B1)
+B = np.load('B_operator2.npy')
+B2=[]
+for i in range(len(B)):
+    B2.append(tf.convert_to_tensor(B[i]))
+#B2 = tf.convert_to_tensor(B2)
+
+alpha1 = 100
+alpha2 = 100
+
+
+# helper functions for constructing the neural net(s) 
+def _one_time_net(x, name):
+    with tf.variable_scope(name):
+        layer1 = _one_layer(x, n_neuronForF[1], name = 'layer1')
+        layer2 = _one_layer(layer1, n_neuronForF[2], name = 'layer2')
+        layer3 = _one_layer(layer2, n_neuronForF[3], name = 'layer3')
+
+        z = _one_layer(layer3, n_neuronForF[4], activation_fn=None,name = 'final')
+        return z 
+
+def _one_layer(input_, output_size, activation_fn=tf.nn.tanh, stddev=2.0, name='linear'):
+    with tf.variable_scope(name):
+        shape = input_.get_shape().as_list()
+        w = tf.get_variable('Matrix', [shape[1], output_size],
+              tf.float64,
+              tf.random_normal_initializer(
+              stddev=np.sqrt(stddev/(shape[1]+output_size))))
+        b = tf.get_variable('Bias', [1,output_size], tf.float64,
+              tf.constant_initializer(0.0))
+        hidden = tf.matmul(input_, w) + b 
+        if activation_fn:
+            return activation_fn(hidden) 
+        else:
+            return hidden
+
+
+
+
+with tf.Session() as sess:
+    # background dynamics
+
+# forward discretization
+
+    with tf.variable_scope('forward'):
+
+        ##########################在这一块构建损失函数
+       
+        x1 = np.load('x.npy')
+
+        x = tf.convert_to_tensor(x1)
+        w = np.load('w.npy')
+        w = tf.convert_to_tensor(w)
+
+        
+
+        F1 = _one_time_net(x, name=str(1)+'F')
+        F2 = _one_time_net(x, name=str(2)+'F')
+
+        loss_1 = 0
+        for iA in range(Ra):
+            for iU in range(rf):
+                for jA in range(Ra):
+                    for jU in range(rf):
+                        loss_1 = loss_1 + tf.matmul(tf.transpose(tf.matmul(A1[iA],tf.expand_dims(F1[:,iU],1))), tf.matmul(A1[jA],tf.expand_dims(F1[:,jU],1))) * tf.matmul(tf.transpose(tf.matmul(A2[iA],tf.expand_dims(F2[:,iU],1))), tf.matmul(A2[jA],tf.expand_dims(F2[:,jU],1)))
+        
+        loss_2 = 0
+        for i in range(rf):
+            loss_2 = loss_2 + tf.matmul(tf.transpose(w),tf.expand_dims(F1[:,i],1))*tf.matmul(tf.transpose(w),tf.expand_dims(F2[:,i],1))
+
+
+        loss_3 = 0
+        for iA in range(Rb):
+            for iU in range(rf):
+                for jA in range(Rb):
+                    for jU in range(rf):
+                        loss_3 = loss_3 + tf.matmul(tf.transpose(tf.matmul(B1[iA],tf.expand_dims(F1[:,iU],1))), tf.matmul(B1[jA],tf.expand_dims(F1[:,jU],1))) * tf.matmul(tf.transpose(tf.matmul(B2[iA],tf.expand_dims(F2[:,iU],1))), tf.matmul(B2[jA],tf.expand_dims(F2[:,jU],1)))
+ 
+
+        loss_function = (loss_1+ alpha1*(loss_2-1.0)**2 + alpha2*loss_3)/(50**2)
+
+
+
+        #####################################################
+    optimizer_Adam = tf.train.AdamOptimizer()
+    train_op_2 = optimizer_Adam.minimize(loss_function)
+    saver = tf.train.Saver()
+    
+# to save history
+    learning_rates = []
+    #y0_values = []
+    losses = []
+    running_time = []
+    #steps = []
+    sess.run(tf.global_variables_initializer())
+
+    saver = tf.train.Saver()
+
+
+
+#sess.run(tf.global_variables_initializer())
+
+# ######################
+    try:
+        # the actual training loop 
+        start_time_run = time.time()
+        for step_ in range(n_maxstep + 1):
+ 
+            running_time.append(time.time()-start_time)
+            #steps.append(step)
+
+            if step_ % 10 == 0: 
+                sess.run(train_op_2)
+                currentLoss = sess.run(loss_function)
+                losses.append(currentLoss)
+                elapsed = time.time() - start_time_run
+                print("step: ", step_," loss: ", currentLoss,"  time:",elapsed)
+                start_time_run=time.time()
+        end_time = time.time()
+        save_path = saver.save(sess, "./tmp/model.ckpt", global_step=1)
+        print("running time: ", end_time-start_time)
+    except KeyboardInterrupt: 
+        print("\nmanually disengaged")
+
+
+    u1 = sess.run(F1)
+    u2 = sess.run(F2)
+
+
+np.save('F1_new.npy',u1)
+np.save('F2_new.npy',u2)
+
+np.save('loss.npy',np.squeeze(losses))

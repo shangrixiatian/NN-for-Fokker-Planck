@@ -1,0 +1,141 @@
+# coding = utf-8
+# model rebuild;
+
+import numpy as np
+import tensorflow.compat.v1 as tf
+tf.disable_v2_behavior()
+
+from scipy import integrate
+from scipy.interpolate import griddata
+
+import matplotlib.pyplot as plt
+from mpl_toolkits.mplot3d import Axes3D
+
+
+def tanh(x):
+	return (np.exp(x)-np.exp(-x))/(np.exp(x)+np.exp(-x))
+
+def rebuild(X,weights,biases):
+    
+    num_layers = len(weights)+1
+    H=X        
+    for l in range(0,num_layers-2):
+        W = weights[l]
+        b = biases[l]
+        H = tanh(np.matmul(H, W)+b)
+    W = weights[-1]
+    b = biases[-1]
+    Y = np.matmul(H, W)+ b
+    return Y
+
+tf.reset_default_graph()
+saver = tf.train.import_meta_graph("./tmp/model.ckpt-1.meta")
+
+with tf.Session() as sess:
+	saver.restore(sess, tf.train.latest_checkpoint('./tmp/'))
+	layers = [1, 20, 20, 20, 1]
+	
+	F1W = []
+	F1B = []
+
+	F2W = []
+	F2B = []
+###############F1参数################
+	F1W1 = sess.run('forward/1F/layer1/Matrix:0')
+	F1W.append(F1W1)
+	F1W2 = sess.run('forward/1F/layer2/Matrix:0')
+	F1W.append(F1W2)
+	F1W3 = sess.run('forward/1F/layer3/Matrix:0')
+	F1W.append(F1W3)
+	F1W4 = sess.run('forward/1F/final/Matrix:0')
+	F1W.append(F1W4)
+
+
+	F1B1 = sess.run('forward/1F/layer1/Bias:0')
+	F1B.append(F1B1)
+	F1B2 = sess.run('forward/1F/layer2/Bias:0')
+	F1B.append(F1B2)
+	F1B3 = sess.run('forward/1F/layer3/Bias:0')
+	F1B.append(F1B3)
+	F1B4 = sess.run('forward/1F/final/Bias:0')
+	F1B.append(F1B4)
+
+
+###############F1参数################
+	F2W1 = sess.run('forward/2F/layer1/Matrix:0')
+	F2W.append(F2W1)
+	F2W2 = sess.run('forward/2F/layer2/Matrix:0')
+	F2W.append(F2W2)
+	F2W3 = sess.run('forward/2F/layer3/Matrix:0')
+	F2W.append(F2W3)
+	F2W4 = sess.run('forward/2F/final/Matrix:0')
+	F2W.append(F2W4)
+
+
+	F2B1 = sess.run('forward/2F/layer1/Bias:0')
+	F2B.append(F2B1)
+	F2B2 = sess.run('forward/2F/layer2/Bias:0')
+	F2B.append(F2B2)
+	F2B3 = sess.run('forward/2F/layer3/Bias:0')
+	F2B.append(F2B3)
+	F2B4 = sess.run('forward/2F/final/Bias:0')
+	F2B.append(F2B4)
+
+
+	x = np.load('x.npy')
+	#dt = 0.01
+	#boundary = 2
+	#x = np.arange(-boundary,boundary,dt)[:,np.newaxis]
+	X, Y = np.meshgrid(x, x)
+
+	F1_re = rebuild(x,F1W,F1B)
+	F2_re = rebuild(x,F2W,F2B)
+	P_re = np.dot(F2_re,F1_re.T)
+
+
+
+	F1 = np.load('F1_new.npy')
+	F2 = np.load('F2_new.npy')
+
+	#P = np.dot(F2,F1.T)
+
+
+	#error = P_re-P
+
+	fig=plt.figure(figsize=(6,5))
+	ax=Axes3D(fig)
+
+	surf=ax.plot_surface(X,Y,P_re,cmap='Spectral_r',linewidth=0,antialiased=False)
+
+
+	plt.title('rebuild PDF')
+	
+
+
+#########################################
+'''
+	fig=plt.figure(figsize=(6,5))
+	ax=Axes3D(fig)
+
+	surf=ax.plot_surface(X,Y,P,cmap='Spectral_r',linewidth=0,antialiased=False)
+
+
+	plt.title('tensor PDF')
+
+	plt.figure(figsize=(6,5))
+	params = {'mathtext.default': 'regular' }          
+	plt.rcParams.update(params)
+
+	cset=plt.contourf(X,Y,error,40,cmap=plt.cm.hot)
+
+	plt.colorbar(cset)
+	font2={'family':'Times New Roman','weight':'normal','size':16,}
+	plt.xlabel('x',font2)
+	plt.ylabel('y',font2)
+	plt.title('The absolute error',font2)
+	'''
+	plt.show()
+
+
+
+	
